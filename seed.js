@@ -1,68 +1,65 @@
-const { initDatabase, pool } = require('./config/database');
+const { initDatabase, sequelize, User, Blog } = require('./config/database');
 
 async function seedData() {
     try {
         await initDatabase();
 
-        console.log('Resetting existing records in "blogs" and "users"...');
-        await pool.execute('SET FOREIGN_KEY_CHECKS = 0');
-        await pool.execute('TRUNCATE TABLE blogs');
-        await pool.execute('TRUNCATE TABLE users');
-        await pool.execute('SET FOREIGN_KEY_CHECKS = 1');
+        console.log('Syncing Sequelize models and resetting tables...');
+        await sequelize.sync({ force: true });
 
-        const now = new Date();
-
-        // Seed Users: 1 Admin, 1 Active User, 1 Deactivated User
-        const sampleUsers = [
-            [1, 'System', 'Admin', 'admin@blogdb.com', 'admin123', true, 'admin', now, now],
-            [2, 'Arif', 'Hossain', 'arif@blogdb.com', 'user123', true, 'user', now, now],
-            [3, 'Nadia', 'Islam', 'nadia@blogdb.com', 'user123', false, 'user', now, now]
-        ];
-
-        for (const u of sampleUsers) {
-            await pool.execute(
-                `INSERT INTO users (id, firstname, lastname, email, password, isActive, role, createAt, updateAt)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                u
-            );
-        }
+        await User.bulkCreate([
+            {
+                id: 1,
+                firstname: 'System',
+                lastname: 'Admin',
+                email: 'admin@blogdb.com',
+                password: 'admin123',
+                isActive: true,
+                role: 'admin'
+            },
+            {
+                id: 2,
+                firstname: 'Arif',
+                lastname: 'Hossain',
+                email: 'arif@blogdb.com',
+                password: 'user123',
+                isActive: true,
+                role: 'user'
+            },
+            {
+                id: 3,
+                firstname: 'Nadia',
+                lastname: 'Islam',
+                email: 'nadia@blogdb.com',
+                password: 'user123',
+                isActive: false,
+                role: 'user'
+            }
+        ]);
         console.log('✅ Seeded 3 demo users (Admin, Active User, Deactivated User).');
 
-        // Seed Blogs for Active User (userId: 2)
-        const sampleBlogs = [
-            [
-                1,
-                2,
-                'Getting Started with Node.js and MySQL',
-                'Learn how to connect a Node.js console application to a MySQL database using mysql2.',
-                'Backend Development',
-                now,
-                now
-            ],
-            [
-                2,
-                2,
-                'Understanding REST vs CLI Architecture',
-                'A comparison between web APIs and interactive command-line applications.',
-                'Software Architecture',
-                now,
-                now
-            ]
-        ];
-
-        for (const b of sampleBlogs) {
-            await pool.execute(
-                `INSERT INTO blogs (id, userId, blogTitle, blog, category, createAt, updateAt)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                b
-            );
-        }
+        await Blog.bulkCreate([
+            {
+                id: 1,
+                userId: 2,
+                blogTitle: 'Getting Started with Node.js and MySQL',
+                blog: 'Learn how to connect a Node.js console application to a MySQL database using Sequelize ORM and mysql2.',
+                category: 'Backend Development'
+            },
+            {
+                id: 2,
+                userId: 2,
+                blogTitle: 'Understanding REST vs CLI Architecture',
+                blog: 'A comparison between web APIs and interactive command-line applications.',
+                category: 'Software Architecture'
+            }
+        ]);
         console.log('✅ Seeded 2 sample blogs for userId 2.');
-        console.log('\n🎉 Database seeding completed successfully!');
+        console.log('\n🎉 Database seeding completed successfully with Sequelize ORM!');
     } catch (err) {
         console.error('❌ Seeding failed:', err.message);
     } finally {
-        await pool.end();
+        await sequelize.close();
     }
 }
 

@@ -1,7 +1,7 @@
-const { pool } = require('../config/database');
+const { User } = require('../config/database');
 
 /**
- * Registers a new user in the `users` table.
+ * Registers a new user using Sequelize User.create().
  * Default values: isActive = true, role = 'user'
  */
 async function registerUser(firstname, lastname, email, password) {
@@ -11,22 +11,23 @@ async function registerUser(firstname, lastname, email, password) {
             return false;
         }
 
-        const [existingUsers] = await pool.execute(
-            'SELECT id FROM users WHERE email = ?',
-            [email.trim()]
-        );
+        const existingUser = await User.findOne({
+            where: { email: email.trim() }
+        });
 
-        if (existingUsers.length > 0) {
+        if (existingUser) {
             console.log('\n[!] An account with this email already exists. Please log in instead.');
             return false;
         }
 
-        const now = new Date();
-        await pool.execute(
-            `INSERT INTO users (firstname, lastname, email, password, isActive, role, createAt, updateAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [firstname.trim(), lastname.trim(), email.trim(), password, true, 'user', now, now]
-        );
+        await User.create({
+            firstname: firstname.trim(),
+            lastname: lastname.trim(),
+            email: email.trim(),
+            password: password,
+            isActive: true,
+            role: 'user'
+        });
 
         console.log('\n✅ Registration completed! You can now log in to your account.');
         return true;
@@ -37,8 +38,8 @@ async function registerUser(firstname, lastname, email, password) {
 }
 
 /**
- * Authenticates a user by email and password.
- * Checks if `isActive` is false and prints "User is deactivated" as required.
+ * Authenticates a user by email and password using Sequelize User.findOne().
+ * If isActive is false, displays "User is deactivated" and prevents login.
  */
 async function loginUser(email, password) {
     try {
@@ -47,24 +48,22 @@ async function loginUser(email, password) {
             return null;
         }
 
-        const [rows] = await pool.execute(
-            'SELECT * FROM users WHERE email = ?',
-            [email.trim()]
-        );
+        const userRecord = await User.findOne({
+            where: { email: email.trim() }
+        });
 
-        if (rows.length === 0) {
+        if (!userRecord) {
             console.log('\n[!] Invalid email or user does not exist.');
             return null;
         }
 
-        const user = rows[0];
+        const user = userRecord.toJSON();
 
         if (user.password !== password) {
             console.log('\n[!] Incorrect password. Please try again.');
             return null;
         }
 
-        // If isActive is false (0 in MySQL TINYINT(1)), block login with exact message
         if (!user.isActive) {
             console.log('User is deactivated');
             return null;

@@ -1,5 +1,5 @@
 const readline = require('readline-sync');
-const { initDatabase, pool } = require('./config/database');
+const { initDatabase, sequelize } = require('./config/database');
 const authController = require('./controllers/authController');
 const blogController = require('./controllers/blogController');
 const adminController = require('./controllers/adminController');
@@ -219,7 +219,7 @@ async function startApp() {
             case '4':
                 console.log('\nThank you for using the Blog Management Console App. Goodbye!');
                 running = false;
-                await pool.end();
+                await sequelize.close();
                 process.exit(0);
                 break;
 

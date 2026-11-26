@@ -1,4 +1,5 @@
-const { pool } = require('../config/database');
+const { Op } = require('sequelize');
+const { Blog, User } = require('../config/database');
 
 /**
  * Reader Journey: Any reader can view all available blogs without logging in
@@ -6,13 +7,16 @@ const { pool } = require('../config/database');
  */
 async function allBlog() {
     try {
-        const [blogs] = await pool.execute(
-            `SELECT b.id, b.userId, b.blogTitle, b.blog, b.category, b.createAt, b.updateAt,
-                    u.firstname, u.lastname
-             FROM blogs b
-             LEFT JOIN users u ON b.userId = u.id
-             ORDER BY b.id ASC`
-        );
+        const blogs = await Blog.findAll({
+            include: [
+                {
+                    model: User,
+                    as: 'author',
+                    attributes: ['id', 'firstname', 'lastname']
+                }
+            ],
+            order: [['id', 'ASC']]
+        });
 
         if (blogs.length === 0) {
             console.log('\nNo blogs are found');
@@ -22,8 +26,11 @@ async function allBlog() {
         console.log('\n============================================================');
         console.log('                      ALL AVAILABLE BLOGS                   ');
         console.log('============================================================');
-        blogs.forEach((item) => {
-            const author = item.firstname ? `${item.firstname} ${item.lastname}` : `User #${item.userId}`;
+        blogs.forEach((b) => {
+            const item = b.toJSON();
+            const author = item.author
+                ? `${item.author.firstname} ${item.author.lastname}`
+                : `User #${item.userId}`;
             console.log(`Blog ID   : ${item.id}`);
             console.log(`Title     : ${item.blogTitle}`);
             console.log(`Category  : ${item.category}`);
@@ -43,13 +50,11 @@ async function allBlog() {
  */
 async function getUserBlogTitles(userId) {
     try {
-        const [blogs] = await pool.execute(
-            `SELECT id, blogTitle, category, createAt
-             FROM blogs
-             WHERE userId = ?
-             ORDER BY id ASC`,
-            [userId]
-        );
+        const blogs = await Blog.findAll({
+            where: { userId },
+            attributes: ['id', 'blogTitle', 'category', 'createAt'],
+            order: [['id', 'ASC']]
+        });
 
         if (blogs.length === 0) {
             console.log('No blogs are found');
@@ -67,8 +72,7 @@ async function getUserBlogTitles(userId) {
 }
 
 /**
- * Search for a blog by blog ID or blog title, and display the matching blog(s).
- * When `userId` is passed, filters within that user's blogs (or all blogs if omitted).
+ * Search for a blog by blog ID or blog title using Sequelize Op.or / Op.like.
  */
 async function searchBlogByIdOrTitle(queryInput, userId = null) {
     try {
@@ -78,28 +82,32 @@ async function searchBlogByIdOrTitle(queryInput, userId = null) {
             return;
         }
 
-        const isId = !isNaN(cleanQuery) && Number.isInteger(Number(cleanQuery));
+        const isNumericId = !isNaN(cleanQuery) && Number.isInteger(Number(cleanQuery));
+        const orFilters = [{ blogTitle: { [Op.like]: `%${cleanQuery}%` } }];
 
-        let sql = `
-            SELECT b.id, b.userId, b.blogTitle, b.blog, b.category, b.createAt, b.updateAt,
-                   u.firstname, u.lastname
-            FROM blogs b
-            LEFT JOIN users u ON b.userId = u.id
-            WHERE (b.blogTitle LIKE ? ${isId ? 'OR b.id = ?' : ''})
-        `;
-        const params = [`%${cleanQuery}%`];
-        if (isId) {
-            params.push(Number(cleanQuery));
+        if (isNumericId) {
+            orFilters.push({ id: Number(cleanQuery) });
         }
+
+        const whereCondition = {
+            [Op.or]: orFilters
+        };
 
         if (userId !== null) {
-            sql += ' AND b.userId = ?';
-            params.push(userId);
+            whereCondition.userId = userId;
         }
 
-        sql += ' ORDER BY b.id ASC';
-
-        const [results] = await pool.execute(sql, params);
+        const results = await Blog.findAll({
+            where: whereCondition,
+            include: [
+                {
+                    model: User,
+                    as: 'author',
+                    attributes: ['id', 'firstname', 'lastname']
+                }
+            ],
+            order: [['id', 'ASC']]
+        });
 
         if (results.length === 0) {
             console.log('\nNo blogs are found');
@@ -107,8 +115,11 @@ async function searchBlogByIdOrTitle(queryInput, userId = null) {
         }
 
         console.log('\n================== MATCHING BLOG(S) ==================');
-        results.forEach((item) => {
-            const author = item.firstname ? `${item.firstname} ${item.lastname}` : `User #${item.userId}`;
+        results.forEach((b) => {
+            const item = b.toJSON();
+            const author = item.author
+                ? `${item.author.firstname} ${item.author.lastname}`
+                : `User #${item.userId}`;
             console.log(`Blog ID   : ${item.id}`);
             console.log(`Title     : ${item.blogTitle}`);
             console.log(`Category  : ${item.category}`);
@@ -123,7 +134,7 @@ async function searchBlogByIdOrTitle(queryInput, userId = null) {
 }
 
 /**
- * Creates a new blog for the authenticated user.
+ * Creates a new blog for the authenticated user using Sequelize Blog.create().
  */
 async function createNewBlog(userId, blogTitle, blogContent, category) {
     try {
@@ -132,47 +143,39 @@ async function createNewBlog(userId, blogTitle, blogContent, category) {
             return;
         }
 
-        const now = new Date();
-        const [result] = await pool.execute(
-            `INSERT INTO blogs (userId, blogTitle, blog, category, createAt, updateAt)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [userId, blogTitle.trim(), blogContent.trim(), category.trim(), now, now]
-        );
+        const created = await Blog.create({
+            userId,
+            blogTitle: blogTitle.trim(),
+            blog: blogContent.trim(),
+            category: category.trim()
+        });
 
-        console.log(`\n✅ Blog created successfully with ID: ${result.insertId}`);
+        console.log(`\n✅ Blog created successfully with ID: ${created.id}`);
     } catch (err) {
         console.error('\n[Error] Failed to create blog:', err.message);
     }
 }
 
 /**
- * Updates an existing blog by its blog ID.
+ * Updates an existing blog by its blog ID using Sequelize.
  */
 async function updateBlogById(blogId, userId, newTitle, newBlogContent, newCategory) {
     try {
-        const [rows] = await pool.execute(
-            'SELECT * FROM blogs WHERE id = ? AND userId = ?',
-            [blogId, userId]
-        );
+        const blogRecord = await Blog.findOne({
+            where: { id: blogId, userId }
+        });
 
-        if (rows.length === 0) {
+        if (!blogRecord) {
             console.log('\n[!] Blog not found or you do not have permission to edit it.');
             return;
         }
 
-        const current = rows[0];
-        const updatedTitle = newTitle && newTitle.trim() !== '' ? newTitle.trim() : current.blogTitle;
-        const updatedContent = newBlogContent && newBlogContent.trim() !== '' ? newBlogContent.trim() : current.blog;
-        const updatedCategory = newCategory && newCategory.trim() !== '' ? newCategory.trim() : current.category;
-        const now = new Date();
+        const updates = {};
+        if (newTitle && newTitle.trim() !== '') updates.blogTitle = newTitle.trim();
+        if (newBlogContent && newBlogContent.trim() !== '') updates.blog = newBlogContent.trim();
+        if (newCategory && newCategory.trim() !== '') updates.category = newCategory.trim();
 
-        await pool.execute(
-            `UPDATE blogs
-             SET blogTitle = ?, blog = ?, category = ?, updateAt = ?
-             WHERE id = ? AND userId = ?`,
-            [updatedTitle, updatedContent, updatedCategory, now, blogId, userId]
-        );
-
+        await blogRecord.update(updates);
         console.log(`\n✅ Blog ID ${blogId} has been updated successfully.`);
     } catch (err) {
         console.error('\n[Error] Could not update blog:', err.message);
@@ -180,23 +183,20 @@ async function updateBlogById(blogId, userId, newTitle, newBlogContent, newCateg
 }
 
 /**
- * Deletes a blog using its blog ID.
- * If userId is supplied, ensures only the owner can delete it.
- * If userId is null (Admin), deletes any blog by ID.
+ * Deletes a blog using its blog ID via Sequelize Blog.destroy().
  */
 async function deleteBlogById(blogId, userId = null) {
     try {
-        let sql = 'DELETE FROM blogs WHERE id = ?';
-        const params = [blogId];
-
+        const whereCondition = { id: blogId };
         if (userId !== null) {
-            sql += ' AND userId = ?';
-            params.push(userId);
+            whereCondition.userId = userId;
         }
 
-        const [result] = await pool.execute(sql, params);
+        const deletedCount = await Blog.destroy({
+            where: whereCondition
+        });
 
-        if (result.affectedRows === 0) {
+        if (deletedCount === 0) {
             console.log('\n[!] Blog not found or you are not authorized to delete it.');
             return;
         }

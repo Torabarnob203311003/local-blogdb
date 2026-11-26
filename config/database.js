@@ -1,75 +1,155 @@
 const mysql = require('mysql2/promise');
+const { Sequelize, DataTypes } = require('sequelize');
 require('dotenv').config();
 
-const dbConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    port: Number(process.env.DB_PORT) || 3306,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'blogdb',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-};
+const dbName = process.env.DB_NAME || 'blogdb';
+const dbUser = process.env.DB_USER || 'root';
+const dbPass = process.env.DB_PASSWORD || '';
+const dbHost = process.env.DB_HOST || 'localhost';
+const dbPort = Number(process.env.DB_PORT) || 3306;
 
-const pool = mysql.createPool(dbConfig);
+// Create Sequelize ORM instance with custom timestamp column names (createAt & updateAt)
+const sequelize = new Sequelize(dbName, dbUser, dbPass, {
+    host: dbHost,
+    port: dbPort,
+    dialect: 'mysql',
+    logging: false
+});
+
+// 1. User Model (table: users)
+const User = sequelize.define(
+    'User',
+    {
+        id: {
+            type: DataTypes.INTEGER,
+            autoIncrement: true,
+            primaryKey: true
+        },
+        firstname: {
+            type: DataTypes.STRING(100),
+            allowNull: false
+        },
+        lastname: {
+            type: DataTypes.STRING(100),
+            allowNull: false
+        },
+        email: {
+            type: DataTypes.STRING(150),
+            allowNull: false,
+            unique: true
+        },
+        password: {
+            type: DataTypes.STRING(255),
+            allowNull: false
+        },
+        isActive: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: true
+        },
+        role: {
+            type: DataTypes.STRING(20),
+            defaultValue: 'user'
+        },
+        createAt: {
+            type: DataTypes.DATE,
+            defaultValue: DataTypes.NOW
+        },
+        updateAt: {
+            type: DataTypes.DATE,
+            defaultValue: DataTypes.NOW
+        }
+    },
+    {
+        tableName: 'users',
+        timestamps: true,
+        createdAt: 'createAt',
+        updatedAt: 'updateAt'
+    }
+);
+
+// 2. Blog Model (table: blogs)
+const Blog = sequelize.define(
+    'Blog',
+    {
+        id: {
+            type: DataTypes.INTEGER,
+            autoIncrement: true,
+            primaryKey: true
+        },
+        userId: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            references: {
+                model: 'users',
+                key: 'id'
+            }
+        },
+        blogTitle: {
+            type: DataTypes.STRING(255),
+            allowNull: false
+        },
+        blog: {
+            type: DataTypes.TEXT,
+            allowNull: false
+        },
+        category: {
+            type: DataTypes.STRING(100),
+            allowNull: false
+        },
+        createAt: {
+            type: DataTypes.DATE,
+            defaultValue: DataTypes.NOW
+        },
+        updateAt: {
+            type: DataTypes.DATE,
+            defaultValue: DataTypes.NOW
+        }
+    },
+    {
+        tableName: 'blogs',
+        timestamps: true,
+        createdAt: 'createAt',
+        updatedAt: 'updateAt'
+    }
+);
+
+// 3. One-to-Many Relationship between users and blogs
+User.hasMany(Blog, {
+    foreignKey: 'userId',
+    as: 'blogs',
+    onDelete: 'CASCADE'
+});
+Blog.belongsTo(User, {
+    foreignKey: 'userId',
+    as: 'author'
+});
 
 /**
- * Ensures the `blogdb` database and both `users` and `blogs` tables exist.
+ * Ensures `blogdb` exists in MySQL and syncs the Sequelize models (`users` and `blogs`).
  */
 async function initDatabase() {
     let tempConn;
     try {
         tempConn = await mysql.createConnection({
-            host: dbConfig.host,
-            port: dbConfig.port,
-            user: dbConfig.user,
-            password: dbConfig.password
+            host: dbHost,
+            port: dbPort,
+            user: dbUser,
+            password: dbPass
         });
+        await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\`;`);
+        await tempConn.end();
 
-        await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\`;`);
-        await tempConn.changeUser({ database: dbConfig.database });
-
-        const usersTableSQL = `
-            CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                firstname VARCHAR(100) NOT NULL,
-                lastname VARCHAR(100) NOT NULL,
-                email VARCHAR(150) NOT NULL UNIQUE,
-                password VARCHAR(255) NOT NULL,
-                isActive BOOLEAN DEFAULT TRUE,
-                role VARCHAR(20) DEFAULT 'user',
-                createAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updateAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            );
-        `;
-
-        const blogsTableSQL = `
-            CREATE TABLE IF NOT EXISTS blogs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                userId INT NOT NULL,
-                blogTitle VARCHAR(255) NOT NULL,
-                blog TEXT NOT NULL,
-                category VARCHAR(100) NOT NULL,
-                createAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updateAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_blog_user FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-            );
-        `;
-
-        await tempConn.query(usersTableSQL);
-        await tempConn.query(blogsTableSQL);
+        await sequelize.authenticate();
+        await sequelize.sync();
     } catch (err) {
         console.error('\n[Database Error] Could not connect or initialize MySQL:', err.message);
         console.error('Please verify your MySQL server is running and check your .env credentials.\n');
-    } finally {
-        if (tempConn) {
-            await tempConn.end();
-        }
     }
 }
 
 module.exports = {
-    pool,
+    sequelize,
+    User,
+    Blog,
     initDatabase
 };

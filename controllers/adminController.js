@@ -1,15 +1,14 @@
-const { pool } = require('../config/database');
+const { User, Blog } = require('../config/database');
 
 /**
  * Admin Journey: View the complete user list by calling the allUsers() function.
  */
 async function allUsers() {
     try {
-        const [users] = await pool.execute(
-            `SELECT id, firstname, lastname, email, isActive, role, createAt, updateAt
-             FROM users
-             ORDER BY id ASC`
-        );
+        const users = await User.findAll({
+            attributes: ['id', 'firstname', 'lastname', 'email', 'isActive', 'role', 'createAt', 'updateAt'],
+            order: [['id', 'ASC']]
+        });
 
         if (users.length === 0) {
             console.log('\nNo users found in the database.');
@@ -19,10 +18,10 @@ async function allUsers() {
         console.log('\n==========================================================================');
         console.log('                            COMPLETE USER LIST                            ');
         console.log('==========================================================================');
-        users.forEach((u) => {
-            const activeStatus = Boolean(u.isActive);
+        users.forEach((record) => {
+            const u = record.toJSON();
             console.log(
-                `ID: ${u.id} | Name: ${u.firstname} ${u.lastname} | Email: ${u.email} | Role: ${u.role} | isActive: ${activeStatus}`
+                `ID: ${u.id} | Name: ${u.firstname} ${u.lastname} | Email: ${u.email} | Role: ${u.role} | isActive: ${Boolean(u.isActive)}`
             );
         });
         console.log('==========================================================================');
@@ -36,13 +35,16 @@ async function allUsers() {
  */
 async function allUsersBlog() {
     try {
-        const [blogs] = await pool.execute(
-            `SELECT b.id, b.userId, b.blogTitle, b.blog, b.category, b.createAt, b.updateAt,
-                    u.firstname, u.lastname, u.email
-             FROM blogs b
-             LEFT JOIN users u ON b.userId = u.id
-             ORDER BY b.id ASC`
-        );
+        const blogs = await Blog.findAll({
+            include: [
+                {
+                    model: User,
+                    as: 'author',
+                    attributes: ['id', 'firstname', 'lastname', 'email']
+                }
+            ],
+            order: [['id', 'ASC']]
+        });
 
         if (blogs.length === 0) {
             console.log('\nNo blogs are found');
@@ -52,10 +54,12 @@ async function allUsersBlog() {
         console.log('\n==========================================================================');
         console.log('                         ALL BLOGS FROM ALL USERS                         ');
         console.log('==========================================================================');
-        blogs.forEach((b) => {
-            const authorName = b.firstname ? `${b.firstname} ${b.lastname}` : 'Unknown User';
+        blogs.forEach((record) => {
+            const b = record.toJSON();
+            const authorName = b.author ? `${b.author.firstname} ${b.author.lastname}` : 'Unknown User';
+            const authorEmail = b.author ? b.author.email : 'N/A';
             console.log(`Blog ID   : ${b.id} | Title: ${b.blogTitle} | Category: ${b.category}`);
-            console.log(`Author    : ${authorName} (User ID: ${b.userId}, Email: ${b.email || 'N/A'})`);
+            console.log(`Author    : ${authorName} (User ID: ${b.userId}, Email: ${authorEmail})`);
             console.log(`Content   : ${b.blog}`);
             console.log(`Created   : ${new Date(b.createAt).toLocaleString()}`);
             console.log('--------------------------------------------------------------------------');
@@ -66,17 +70,16 @@ async function allUsersBlog() {
 }
 
 /**
- * Admin Journey: Update a user's isActive status.
+ * Admin Journey: Update a user's isActive status using Sequelize User.update().
  */
 async function updateUserActiveStatus(userId, isActiveBool) {
     try {
-        const now = new Date();
-        const [result] = await pool.execute(
-            'UPDATE users SET isActive = ?, updateAt = ? WHERE id = ?',
-            [isActiveBool ? 1 : 0, now, userId]
+        const [updatedRows] = await User.update(
+            { isActive: Boolean(isActiveBool) },
+            { where: { id: userId } }
         );
 
-        if (result.affectedRows === 0) {
+        if (updatedRows === 0) {
             console.log(`\n[!] No user found with ID ${userId}.`);
             return;
         }
@@ -90,16 +93,15 @@ async function updateUserActiveStatus(userId, isActiveBool) {
 }
 
 /**
- * Admin Journey: Delete any user.
+ * Admin Journey: Delete any user using Sequelize User.destroy().
  */
 async function removeUserById(userId) {
     try {
-        // Delete user's blogs first to ensure clean removal even if FK cascade isn't set
-        await pool.execute('DELETE FROM blogs WHERE userId = ?', [userId]);
+        await Blog.destroy({ where: { userId } });
 
-        const [result] = await pool.execute('DELETE FROM users WHERE id = ?', [userId]);
+        const deletedRows = await User.destroy({ where: { id: userId } });
 
-        if (result.affectedRows === 0) {
+        if (deletedRows === 0) {
             console.log(`\n[!] No user found with ID ${userId}.`);
             return;
         }

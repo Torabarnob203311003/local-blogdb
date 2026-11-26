@@ -24,7 +24,8 @@ This CLI application provides an interactive console interface for creating, rea
 - **Runtime:** Node.js
 - **Language:** JavaScript (CommonJS)
 - **Database:** MySQL (`blogdb`)
-- **Packages:** `mysql2`, `readline-sync`, `dotenv`
+- **ORM:** Sequelize
+- **Packages:** `sequelize`, `mysql2`, `readline-sync`, `dotenv`
 
 ---
 
