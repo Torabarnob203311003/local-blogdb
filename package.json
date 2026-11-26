@@ -1,0 +1,25 @@
+{
+  "name": "blogdb-crud-cli",
+  "version": "1.0.0",
+  "description": "Batch 20 CRUD Console Project - Blog Management CLI with Node.js and MySQL",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "setup-db": "node setupDb.js",
+    "seed": "node seed.js"
+  },
+  "keywords": [
+    "nodejs",
+    "mysql",
+    "crud",
+    "cli",
+    "blogdb"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mysql2": "^3.11.3",
+    "readline-sync": "^1.4.10"
+  }
+}
