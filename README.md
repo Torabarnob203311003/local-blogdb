@@ -6,7 +6,8 @@ A command-line CRUD blog management application built with **Node.js**, **JavaSc
 
 ## Project Video Demonstration
 
-- **Recorded Demo Video Link:** `[Add Your Uploaded Demo Video Link Here]`
+- **Recorded Demo Video Link:** [Watch Project Demonstration Video on Google Drive](https://drive.google.com/drive/folders/18YGMEDnN2UusD9wlVWAHdDtlqz1qwhHd?usp=sharing)
+- **Direct URL:** https://drive.google.com/drive/folders/18YGMEDnN2UusD9wlVWAHdDtlqz1qwhHd?usp=sharing
 
 ---
 
