@@ -5,6 +5,39 @@ const blogController = require('./controllers/blogController');
 const adminController = require('./controllers/adminController');
 
 /**
+ * Interactive Forgot Password screen using Security Question ("What is your pet name?").
+ */
+async function handleForgotPasswordFlow(prefilledEmail = '') {
+    console.log('\n================ FORGOT PASSWORD RECOVERY ================');
+    const email = prefilledEmail
+        ? prefilledEmail
+        : readline.question('Enter your registered Email: ').trim();
+
+    if (!email) {
+        console.log('\n[!] Email is required.');
+        return;
+    }
+
+    const petAnswer = readline.question('Security Question - What is your pet name?: ').trim();
+    const isVerified = await authController.verifyPetNameAnswer(email, petAnswer);
+
+    if (!isVerified) {
+        return;
+    }
+
+    console.log('\n--- Create New Password ---');
+    const newPassword = readline.question('Enter New Password: ', { hideEchoBack: true });
+    const confirmPassword = readline.question('Confirm New Password: ', { hideEchoBack: true });
+
+    if (newPassword !== confirmPassword) {
+        console.log('\n[!] Passwords do not match. Please try again.');
+        return;
+    }
+
+    await authController.resetUserPassword(email, newPassword);
+}
+
+/**
  * User Console Menu
  * Options:
  * 1. View Your Blogs
@@ -23,14 +56,17 @@ async function showUserConsoleMenu(loggedInUser) {
 
     let sessionActive = true;
     while (sessionActive) {
-        console.log('\n================ USER CONSOLE MENU ================');
+        console.log('\n====================================================');
+        console.log('     Welcome to your dashboard (User Console)       ');
+        console.log(`     [Logged in as: ${loggedInUser.firstname} ${loggedInUser.lastname} | User ID: ${loggedInUser.id}]`);
+        console.log('====================================================');
         console.log('1. View Your Blogs');
         console.log('2. Search Blog by ID/Title');
         console.log('3. Create Blog');
         console.log('4. Update Blog');
         console.log('5. Delete Blog');
         console.log('6. Logout');
-        console.log('===================================================');
+        console.log('====================================================');
 
         const selection = readline.question('Choose an option (1-6): ').trim();
 
@@ -93,10 +129,15 @@ async function showUserConsoleMenu(loggedInUser) {
  * 6. Delete Blog
  * 7. Logout
  */
-async function showAdminConsoleMenu() {
+async function showAdminConsoleMenu(loggedInAdmin) {
     let adminActive = true;
     while (adminActive) {
-        console.log('\n================ ADMIN CONSOLE MENU ================');
+        console.log('\n====================================================');
+        console.log('     Welcome to your dashboard (Admin Console)      ');
+        if (loggedInAdmin) {
+            console.log(`     [Logged in as: ${loggedInAdmin.firstname} ${loggedInAdmin.lastname} | Admin ID: ${loggedInAdmin.id}]`);
+        }
+        console.log('====================================================');
         console.log('1. View All Users');
         console.log('2. View All Blogs');
         console.log('3. Search Blog by ID/Title');
@@ -167,7 +208,8 @@ async function showAdminConsoleMenu() {
  * 1. View All Blogs
  * 2. Login
  * 3. Register
- * 4. Exit
+ * 4. Forgot Password
+ * 5. Exit
  */
 async function startApp() {
     await initDatabase();
@@ -175,15 +217,16 @@ async function startApp() {
     let running = true;
     while (running) {
         console.log('\n====================================================');
-        console.log('             BLOG MANAGEMENT CONSOLE APP            ');
+        console.log('             Blog Management Console App            ');
         console.log('====================================================');
         console.log('1. View All Blogs');
         console.log('2. Login');
         console.log('3. Register');
-        console.log('4. Exit');
+        console.log('4. Forgot Password');
+        console.log('5. Exit');
         console.log('====================================================');
 
-        const choice = readline.question('Select an option (1-4): ').trim();
+        const choice = readline.question('Select an option (1-5): ').trim();
 
         switch (choice) {
             case '1':
@@ -194,13 +237,21 @@ async function startApp() {
                 console.log('\n--- User / Admin Login ---');
                 const email = readline.question('Email: ');
                 const password = readline.question('Password: ', { hideEchoBack: true });
-                const authenticatedUser = await authController.loginUser(email, password);
+                const loginResult = await authController.loginUser(email, password);
 
-                if (authenticatedUser) {
-                    if (authenticatedUser.role === 'admin') {
-                        await showAdminConsoleMenu(authenticatedUser);
+                if (loginResult && loginResult.wrongPassword) {
+                    const recoverChoice = readline
+                        .question('Forgot your password? Reset it now using your Security Question? (y/n): ')
+                        .trim()
+                        .toLowerCase();
+                    if (recoverChoice === 'y' || recoverChoice === 'yes') {
+                        await handleForgotPasswordFlow(loginResult.email);
+                    }
+                } else if (loginResult) {
+                    if (loginResult.role === 'admin') {
+                        await showAdminConsoleMenu(loginResult);
                     } else {
-                        await showUserConsoleMenu(authenticatedUser);
+                        await showUserConsoleMenu(loginResult);
                     }
                 }
                 break;
@@ -212,11 +263,16 @@ async function startApp() {
                 const lastname = readline.question('Last Name: ');
                 const email = readline.question('Email: ');
                 const password = readline.question('Password: ', { hideEchoBack: true });
-                await authController.registerUser(firstname, lastname, email, password);
+                const petName = readline.question('Security Question - What is your pet name?: ');
+                await authController.registerUser(firstname, lastname, email, password, petName);
                 break;
             }
 
             case '4':
+                await handleForgotPasswordFlow();
+                break;
+
+            case '5':
                 console.log('\nThank you for using the Blog Management Console App. Goodbye!');
                 running = false;
                 await sequelize.close();
@@ -224,7 +280,7 @@ async function startApp() {
                 break;
 
             default:
-                console.log('\n[!] Invalid choice. Please select an option between 1 and 4.');
+                console.log('\n[!] Invalid choice. Please select an option between 1 and 5.');
         }
     }
 }

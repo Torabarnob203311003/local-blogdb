@@ -1,9 +1,82 @@
 const { Op } = require('sequelize');
 const { Blog, User } = require('../config/database');
 
+const COLORS = {
+    reset: '\x1b[0m',
+    bold: '\x1b[1m',
+    green: '\x1b[32m',
+    red: '\x1b[31m',
+    cyan: '\x1b[36m',
+    yellow: '\x1b[33m',
+    magenta: '\x1b[35m',
+    white: '\x1b[37m',
+    gray: '\x1b[90m'
+};
+
+function formatCell(val, width, color = '') {
+    const str = String(val ?? '');
+    const truncated = str.length > width ? str.slice(0, width - 3) + '...' : str;
+    const padded = truncated.padEnd(width, ' ');
+    return color ? `${color}${padded}${COLORS.reset}` : padded;
+}
+
+/**
+ * Formats a timestamp into readable Bangladesh Time (Asia/Dhaka) with separate Date and Time.
+ */
+function formatBangladeshDateTime(dateInput) {
+    if (!dateInput) {
+        return { dateStr: 'N/A', timeStr: 'N/A', fullStr: 'N/A' };
+    }
+    const d = new Date(dateInput);
+
+    const dateStr = d.toLocaleDateString('en-GB', {
+        timeZone: 'Asia/Dhaka',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+    });
+
+    const timeStr = d.toLocaleTimeString('en-US', {
+        timeZone: 'Asia/Dhaka',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    });
+
+    return {
+        dateStr,
+        timeStr,
+        fullStr: `${dateStr} at ${timeStr} (BD Time)`
+    };
+}
+
+/**
+ * Helper to print a single blog with clearly separated fields
+ * (Blog ID, Title, Category, Blog / Content, Author, Created Date & Time, Updated Date & Time).
+ */
+function printFormattedBlog(item) {
+    const author = item.author
+        ? `${item.author.firstname} ${item.author.lastname}`
+        : `User #${item.userId}`;
+    const created = formatBangladeshDateTime(item.createAt);
+    const updated = formatBangladeshDateTime(item.updateAt);
+
+    console.log(`${COLORS.bold}${COLORS.yellow}Blog ID      :${COLORS.reset} ${COLORS.bold}${COLORS.green}${item.id}${COLORS.reset}`);
+    console.log(`${COLORS.bold}${COLORS.yellow}Blog Title   :${COLORS.reset} ${COLORS.bold}${COLORS.white}${item.blogTitle}${COLORS.reset}`);
+    console.log(`${COLORS.bold}${COLORS.yellow}Category     :${COLORS.reset} ${COLORS.cyan}${item.category}${COLORS.reset}`);
+    console.log(`${COLORS.bold}${COLORS.yellow}Blog Content :${COLORS.reset} ${item.blog}`);
+    console.log(`${COLORS.bold}${COLORS.yellow}Author       :${COLORS.reset} ${COLORS.magenta}${author} (User ID: ${item.userId})${COLORS.reset}`);
+    console.log(`${COLORS.bold}${COLORS.yellow}Created Date :${COLORS.reset} ${created.dateStr}`);
+    console.log(`${COLORS.bold}${COLORS.yellow}Created Time :${COLORS.reset} ${created.timeStr} (Bangladesh Time)`);
+    console.log(`${COLORS.bold}${COLORS.yellow}Updated At   :${COLORS.reset} ${updated.fullStr}`);
+    console.log('------------------------------------------------------------');
+}
+
 /**
  * Reader Journey: Any reader can view all available blogs without logging in
  * by executing the allBlog() function.
+ * Displays all blogs in a formatted colored table.
  */
 async function allBlog() {
     try {
@@ -23,29 +96,45 @@ async function allBlog() {
             return;
         }
 
-        console.log('\n============================================================');
-        console.log('                      ALL AVAILABLE BLOGS                   ');
-        console.log('============================================================');
+        const wId = 4;
+        const wTitle = 28;
+        const wCat = 16;
+        const wAuthor = 18;
+        const wContent = 30;
+        const wCreated = 23;
+
+        const borderTop = `┌${'─'.repeat(wId + 2)}┬${'─'.repeat(wTitle + 2)}┬${'─'.repeat(wCat + 2)}┬${'─'.repeat(wAuthor + 2)}┬${'─'.repeat(wContent + 2)}┬${'─'.repeat(wCreated + 2)}┐`;
+        const borderMid = `├${'─'.repeat(wId + 2)}┼${'─'.repeat(wTitle + 2)}┼${'─'.repeat(wCat + 2)}┼${'─'.repeat(wAuthor + 2)}┼${'─'.repeat(wContent + 2)}┼${'─'.repeat(wCreated + 2)}┤`;
+        const borderBot = `└${'─'.repeat(wId + 2)}┴${'─'.repeat(wTitle + 2)}┴${'─'.repeat(wCat + 2)}┴${'─'.repeat(wAuthor + 2)}┴${'─'.repeat(wContent + 2)}┴${'─'.repeat(wCreated + 2)}┘`;
+
+        console.log(`\n${COLORS.bold}${COLORS.cyan}                                                    ALL AVAILABLE BLOGS                                                   ${COLORS.reset}`);
+        console.log(borderTop);
+        console.log(
+            `│ ${formatCell('ID', wId, COLORS.bold + COLORS.yellow)} │ ${formatCell('Blog Title', wTitle, COLORS.bold + COLORS.yellow)} │ ${formatCell('Category', wCat, COLORS.bold + COLORS.yellow)} │ ${formatCell('Author', wAuthor, COLORS.bold + COLORS.yellow)} │ ${formatCell('Blog Content', wContent, COLORS.bold + COLORS.yellow)} │ ${formatCell('Created (BD Time)', wCreated, COLORS.bold + COLORS.yellow)} │`
+        );
+        console.log(borderMid);
+
         blogs.forEach((b) => {
             const item = b.toJSON();
             const author = item.author
                 ? `${item.author.firstname} ${item.author.lastname}`
                 : `User #${item.userId}`;
-            console.log(`Blog ID   : ${item.id}`);
-            console.log(`Title     : ${item.blogTitle}`);
-            console.log(`Category  : ${item.category}`);
-            console.log(`Author    : ${author}`);
-            console.log(`Content   : ${item.blog}`);
-            console.log(`Created   : ${new Date(item.createAt).toLocaleString()}`);
-            console.log('------------------------------------------------------------');
+            const created = formatBangladeshDateTime(item.createAt);
+            const createdShort = `${created.dateStr} ${created.timeStr}`;
+
+            console.log(
+                `│ ${formatCell(item.id, wId, COLORS.bold + COLORS.green)} │ ${formatCell(item.blogTitle, wTitle, COLORS.bold + COLORS.white)} │ ${formatCell(item.category, wCat, COLORS.cyan)} │ ${formatCell(author, wAuthor, COLORS.magenta)} │ ${formatCell(item.blog, wContent, COLORS.white)} │ ${formatCell(createdShort, wCreated, COLORS.gray)} │`
+            );
         });
+
+        console.log(borderBot);
     } catch (err) {
         console.error('\n[Error] Could not retrieve blogs:', err.message);
     }
 }
 
 /**
- * Displays all blog titles created by the logged-in user.
+ * Displays all blog titles created by the logged-in user in a colored table.
  * If the user has no blogs, displays "No blogs are found" in the console.
  */
 async function getUserBlogTitles(userId) {
@@ -61,11 +150,30 @@ async function getUserBlogTitles(userId) {
             return;
         }
 
-        console.log('\n---------------- YOUR BLOG TITLES ----------------');
+        const wId = 4;
+        const wTitle = 34;
+        const wCat = 18;
+        const wCreated = 25;
+
+        const borderTop = `┌${'─'.repeat(wId + 2)}┬${'─'.repeat(wTitle + 2)}┬${'─'.repeat(wCat + 2)}┬${'─'.repeat(wCreated + 2)}┐`;
+        const borderMid = `├${'─'.repeat(wId + 2)}┼${'─'.repeat(wTitle + 2)}┼${'─'.repeat(wCat + 2)}┼${'─'.repeat(wCreated + 2)}┤`;
+        const borderBot = `└${'─'.repeat(wId + 2)}┴${'─'.repeat(wTitle + 2)}┴${'─'.repeat(wCat + 2)}┴${'─'.repeat(wCreated + 2)}┘`;
+
+        console.log(`\n${COLORS.bold}${COLORS.cyan}                               YOUR BLOG TITLES                               ${COLORS.reset}`);
+        console.log(borderTop);
+        console.log(
+            `│ ${formatCell('ID', wId, COLORS.bold + COLORS.yellow)} │ ${formatCell('Blog Title', wTitle, COLORS.bold + COLORS.yellow)} │ ${formatCell('Category', wCat, COLORS.bold + COLORS.yellow)} │ ${formatCell('Created (BD Time)', wCreated, COLORS.bold + COLORS.yellow)} │`
+        );
+        console.log(borderMid);
+
         blogs.forEach((b) => {
-            console.log(`ID: ${b.id} | Title: ${b.blogTitle} (Category: ${b.category})`);
+            const created = formatBangladeshDateTime(b.createAt);
+            const createdShort = `${created.dateStr} ${created.timeStr}`;
+            console.log(
+                `│ ${formatCell(b.id, wId, COLORS.bold + COLORS.green)} │ ${formatCell(b.blogTitle, wTitle, COLORS.bold + COLORS.white)} │ ${formatCell(b.category, wCat, COLORS.cyan)} │ ${formatCell(createdShort, wCreated, COLORS.gray)} │`
+            );
         });
-        console.log('--------------------------------------------------');
+        console.log(borderBot);
     } catch (err) {
         console.error('\n[Error] Could not fetch your blogs:', err.message);
     }
@@ -73,6 +181,7 @@ async function getUserBlogTitles(userId) {
 
 /**
  * Search for a blog by blog ID or blog title using Sequelize Op.or / Op.like.
+ * Displays matching blog(s) with separate Title, Blog Content, Category, and Bangladesh Date & Time.
  */
 async function searchBlogByIdOrTitle(queryInput, userId = null) {
     try {
@@ -114,19 +223,9 @@ async function searchBlogByIdOrTitle(queryInput, userId = null) {
             return;
         }
 
-        console.log('\n================== MATCHING BLOG(S) ==================');
+        console.log(`\n${COLORS.bold}${COLORS.cyan}===================== SEARCH BLOG DETAILS =====================${COLORS.reset}`);
         results.forEach((b) => {
-            const item = b.toJSON();
-            const author = item.author
-                ? `${item.author.firstname} ${item.author.lastname}`
-                : `User #${item.userId}`;
-            console.log(`Blog ID   : ${item.id}`);
-            console.log(`Title     : ${item.blogTitle}`);
-            console.log(`Category  : ${item.category}`);
-            console.log(`Author    : ${author} (User ID: ${item.userId})`);
-            console.log(`Content   : ${item.blog}`);
-            console.log(`Created   : ${new Date(item.createAt).toLocaleString()}`);
-            console.log('------------------------------------------------------');
+            printFormattedBlog(b.toJSON());
         });
     } catch (err) {
         console.error('\n[Error] Search failed:', err.message);
@@ -150,7 +249,16 @@ async function createNewBlog(userId, blogTitle, blogContent, category) {
             category: category.trim()
         });
 
-        console.log(`\n✅ Blog created successfully with ID: ${created.id}`);
+        const createdTime = formatBangladeshDateTime(created.createAt);
+        console.log('\n✅ Blog created successfully!');
+        console.log('---------------- CREATED BLOG SUMMARY ----------------');
+        console.log(`Blog ID      : ${created.id}`);
+        console.log(`Blog Title   : ${created.blogTitle}`);
+        console.log(`Category     : ${created.category}`);
+        console.log(`Blog Content : ${created.blog}`);
+        console.log(`Created Date : ${createdTime.dateStr}`);
+        console.log(`Created Time : ${createdTime.timeStr} (Bangladesh Time)`);
+        console.log('------------------------------------------------------');
     } catch (err) {
         console.error('\n[Error] Failed to create blog:', err.message);
     }
@@ -213,5 +321,6 @@ module.exports = {
     searchBlogByIdOrTitle,
     createNewBlog,
     updateBlogById,
-    deleteBlogById
+    deleteBlogById,
+    formatBangladeshDateTime
 };
